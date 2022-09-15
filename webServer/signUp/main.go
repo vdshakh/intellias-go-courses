@@ -20,7 +20,7 @@ var newQueries *queryrepo.Queries
 var conf *config.Config
 
 func main() {
-	err := godotenv.Load("config/.env") //check paymentService repo
+	err := godotenv.Load("config/.env")
 	if err != nil {
 		panic(err.Error())
 	}
@@ -37,7 +37,7 @@ func main() {
 }
 
 func SignUpHandler(w http.ResponseWriter, r *http.Request) {
-	conn, err := sql.Open(conf.DbDriver, conf.DbSource) // to main(), create struct
+	conn, err := sql.Open(conf.DbDriver, conf.DbSource)
 	if err != nil {
 		WriteResponse(w, http.StatusInternalServerError, fmt.Sprintf(`{"db connection failed": "%v"}`, err))
 	}
