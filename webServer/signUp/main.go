@@ -83,7 +83,9 @@ func ReadData(w http.ResponseWriter, r *http.Request) (UserData, error) {
 
 	bodyBytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		WriteResponse(w, http.StatusInternalServerError, fmt.Sprintf("ioutil.ReadAll failed: %v", err))
+		WriteResponse(w, http.StatusInternalServerError, fmt.Sprintf("c: %v", err))
+
+		return user, fmt.Errorf("ioutil.ReadAll failed: %w", err)
 	}
 
 	if err = json.Unmarshal(bodyBytes, &user); err != nil {
@@ -101,6 +103,8 @@ func CreateUser(w http.ResponseWriter, r *http.Request) {
 	bodyBytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		WriteResponse(w, http.StatusInternalServerError, fmt.Sprintf("ioutil.ReadAll failed: %v", err))
+
+		return
 	}
 
 	if err = json.Unmarshal(bodyBytes, &req); err != nil {
@@ -149,6 +153,8 @@ func GetUser(w http.ResponseWriter, r *http.Request) {
 	account, err := newQueries.GetUser(r.Context(), user.ID)
 	if err != nil {
 		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf("getUser failed: %v", err))
+
+		return
 	}
 
 	WriteResponse(w, http.StatusOK, account)
@@ -175,6 +181,8 @@ func UpdateUser(w http.ResponseWriter, r *http.Request) {
 	_, err = newQueries.UpdatePassword(r.Context(), updUser)
 	if err != nil {
 		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf("updateUser failed: %v", err))
+
+		return
 	}
 
 	WriteResponse(w, http.StatusAccepted, "updated user successfully")
@@ -189,6 +197,8 @@ func DeleteUser(w http.ResponseWriter, r *http.Request) {
 	err = newQueries.DeleteUser(r.Context(), user.ID)
 	if err != nil {
 		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf("deleteUser failed: %v", err))
+
+		return
 	}
 
 	WriteResponse(w, http.StatusAccepted, "deleted user successfully")
