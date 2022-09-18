@@ -1,23 +1,21 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"github.com/google/uuid"
-	"github.com/joho/godotenv"
-	_ "github.com/joho/godotenv"
-	_ "github.com/lib/pq"
-	"github.com/vdshakh/intellias-go-courses/signUp/common/config"
-	queryrepo "github.com/vdshakh/intellias-go-courses/signUp/db/sqlc"
 	"io/ioutil"
 	"net/http"
 	"os"
+
+	"github.com/google/uuid"
+	"github.com/joho/godotenv"
+	_ "github.com/lib/pq"
+	"github.com/vdshakh/intellias-go-courses/signUp/common/config"
+	db "github.com/vdshakh/intellias-go-courses/signUp/db/sqlc"
 )
 
-var newQueries *queryrepo.Queries
-var conf *config.Config
+var newQueries *db.Queries
 
 func main() {
 	err := godotenv.Load("config/.env")
@@ -25,168 +23,173 @@ func main() {
 		panic(err.Error())
 	}
 
-	conf = config.NewConfigFromEnv()
+	conf := config.NewConfigFromEnv()
 
-	http.HandleFunc(conf.Endpoint, SignUpHandler)
+	conn, err := sql.Open(conf.DBDriver, conf.DBSource)
+	if err != nil {
+		fmt.Printf("db connection failed: %v ", err)
+		os.Exit(1)
+	}
+
+	newQueries = db.New(conn)
+
+	http.HandleFunc("/users", SignUpHandler)
 
 	err = http.ListenAndServe(conf.Port, nil)
 	if err != nil {
-		fmt.Printf("error starting server: %s\n", err)
+		fmt.Printf("error starting server: %s", err)
 		os.Exit(1)
 	}
 }
 
 func SignUpHandler(w http.ResponseWriter, r *http.Request) {
-	conn, err := sql.Open(conf.DbDriver, conf.DbSource)
-	if err != nil {
-		WriteResponse(w, http.StatusInternalServerError, fmt.Sprintf(`{"db connection failed": "%v"}`, err))
-	}
-
-	newQueries = queryrepo.New(conn)
-
 	switch r.Method {
 	case http.MethodPost:
 		CreateUser(w, r)
 
-		return
-
 	case http.MethodGet:
 		GetUser(w, r)
-
-		return
 
 	case http.MethodPut:
 		UpdateUser(w, r)
 
-		return
-
 	case http.MethodDelete:
 		DeleteUser(w, r)
 
-		return
-
 	default:
-		WriteResponse(w, http.StatusMethodNotAllowed, fmt.Sprintf(`{"message": "wrong http method"}`))
-
-		return
+		WriteResponse(w, http.StatusMethodNotAllowed, "wrong http method")
 	}
 }
 
-func WriteResponse(w http.ResponseWriter, status int, message string) {
-	w.Header().Add("Content-Type", "application/json")
-	w.WriteHeader(status)
-	w.Write([]byte(message))
+func WriteResponse(w http.ResponseWriter, statusCode int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+
+	response := map[string]interface{}{
+		"status": http.StatusText(statusCode),
+	}
+	if data != nil {
+		response["data"] = data
+	}
+
+	err := json.NewEncoder(w).Encode(response)
+	if err != nil {
+		fmt.Printf("json encode failed: %v", err)
+	}
+}
+
+func ReadData(w http.ResponseWriter, r *http.Request) (UserData, error) {
+	var user UserData
+
+	bodyBytes, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		WriteResponse(w, http.StatusInternalServerError, fmt.Sprintf("ioutil.ReadAll failed: %v", err))
+	}
+
+	if err = json.Unmarshal(bodyBytes, &user); err != nil {
+		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf("json.Unmarshal failed: %v", err))
+
+		return user, fmt.Errorf("json.Unmarshal failed: %w", err)
+	}
+
+	return user, nil
 }
 
 func CreateUser(w http.ResponseWriter, r *http.Request) {
-	var req Data
+	var req InputData
 
-	bodyBytes, _ := ioutil.ReadAll(r.Body)
-	if err := json.Unmarshal(bodyBytes, &req); err != nil {
-		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf(`{"json.Unmarshal failed": "%v"}`, err))
-
-		return
-	}
-
-	err := req.Validate()
+	bodyBytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf(`{"validation failed": "%v"}`, err))
+		WriteResponse(w, http.StatusInternalServerError, fmt.Sprintf("ioutil.ReadAll failed: %v", err))
+	}
+
+	if err = json.Unmarshal(bodyBytes, &req); err != nil {
+		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf("json.Unmarshal failed: %v", err))
 
 		return
 	}
 
-	_, err = newQueries.GetUserByEmail(context.Background(), req.Email)
+	err = req.Validate()
+	if err != nil {
+		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf("validation failed: %v", err))
+
+		return
+	}
+
+	_, err = newQueries.GetUserByEmail(r.Context(), req.Email)
 	if err == nil {
-		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf(`{"message": "user exists"}`))
+		WriteResponse(w, http.StatusBadRequest, "user exists")
 
 		return
 	}
 
-	user := queryrepo.CreateUserParams{
+	user := db.CreateUserParams{
 		ID:       uuid.New().String(),
 		FullName: req.FullName,
 		Email:    req.Email,
 		Password: req.Password,
 	}
 
-	err = newQueries.CreateUser(context.Background(), user)
+	err = newQueries.CreateUser(r.Context(), user)
 	if err != nil {
-		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf(`{"createUser failed": "%v"}`, err))
+		WriteResponse(w, http.StatusInternalServerError, fmt.Sprintf("createUser failed: %v", err))
+
+		return
 	}
 
-	WriteResponse(w, http.StatusAccepted, fmt.Sprintf(`{"message": "created user successfully}`))
-
-	return
+	WriteResponse(w, http.StatusAccepted, "created user successfully")
 }
 
 func GetUser(w http.ResponseWriter, r *http.Request) {
-	var uID userID
-
-	bodyBytes, _ := ioutil.ReadAll(r.Body)
-	if err := json.Unmarshal(bodyBytes, &uID); err != nil {
-		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf(`{"json.Unmarshal failed": "%v"}`, err))
-
+	user, err := ReadData(w, r)
+	if err != nil {
 		return
 	}
 
-	account, err := newQueries.GetUser(context.Background(), uID.ID)
+	account, err := newQueries.GetUser(r.Context(), user.ID)
 	if err != nil {
-		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf(`{"getUser failed": "%v"}`, uID.ID))
+		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf("getUser failed: %v", err))
 	}
 
-	WriteResponse(w, http.StatusOK, fmt.Sprintf(`{"user": "%v"}`, account))
-
-	return
+	WriteResponse(w, http.StatusOK, account)
 }
 
 func UpdateUser(w http.ResponseWriter, r *http.Request) {
-	var uID userID
+	user, err := ReadData(w, r)
+	if err != nil {
+		return
+	}
 
-	bodyBytes, _ := ioutil.ReadAll(r.Body)
-	if err := json.Unmarshal(bodyBytes, &uID); err != nil {
-		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf(`{"json.Unmarshal failed": "%v"}`, err))
+	err = validatePassword(user.Password)
+	if err != nil {
+		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf("validation failed: %v", err))
 
 		return
 	}
 
-	err := validatePassword(uID.Password)
+	updUser := db.UpdatePasswordParams{
+		ID:       user.ID,
+		Password: user.Password,
+	}
+
+	_, err = newQueries.UpdatePassword(r.Context(), updUser)
 	if err != nil {
-		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf(`{"validatePassword failed": "%v"}`, err))
-
-		return
+		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf("updateUser failed: %v", err))
 	}
 
-	updUser := queryrepo.UpdatePasswordParams{
-		ID:       uID.ID,
-		Password: uID.Password,
-	}
-
-	_, err = newQueries.UpdatePassword(context.Background(), updUser)
-	if err != nil {
-		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf(`{"updateUser failed": "%v"}`, err))
-	}
-
-	WriteResponse(w, http.StatusAccepted, fmt.Sprintf(`{"message": "updated user successfully}`))
-
-	return
+	WriteResponse(w, http.StatusAccepted, "updated user successfully")
 }
 
 func DeleteUser(w http.ResponseWriter, r *http.Request) {
-	var uID userID
-
-	bodyBytes, _ := ioutil.ReadAll(r.Body)
-	if err := json.Unmarshal(bodyBytes, &uID); err != nil {
-		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf(`{"json.Unmarshal failed": "%v"}`, err))
-
+	user, err := ReadData(w, r)
+	if err != nil {
 		return
 	}
 
-	err := newQueries.DeleteUser(context.Background(), uID.ID)
+	err = newQueries.DeleteUser(r.Context(), user.ID)
 	if err != nil {
-		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf(`{"deleteUser failed": "%v"}`, err))
+		WriteResponse(w, http.StatusBadRequest, fmt.Sprintf("deleteUser failed: %v", err))
 	}
 
-	WriteResponse(w, http.StatusAccepted, fmt.Sprintf(`{"message": "deleted user successfully}`))
-
-	return
+	WriteResponse(w, http.StatusAccepted, "deleted user successfully")
 }

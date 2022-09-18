@@ -1,9 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
-	//_ "github.com/go-playground/validator"
 )
 
 const (
@@ -13,62 +13,61 @@ const (
 	passwordPattern = `[ -~]{8,256}$`
 )
 
+// global variables to improve performance; local to readable code
+// var (
+//	nameCheck     = regexp.MustCompile(namePattern)
+//	emailCheck    = regexp.MustCompile(emailPattern)
+//	passwordCheck = regexp.MustCompile(passwordPattern)
+// )
+
 var (
-	checkName     = regexp.MustCompile(namePattern)
-	checkEmail    = regexp.MustCompile(emailPattern)
-	checkPassword = regexp.MustCompile(passwordPattern)
+	errName     = errors.New("nameCheck failed")
+	errEmail    = errors.New("emailCheck failed")
+	errPassword = errors.New("passwordCheck failed")
+	errLength   = errors.New("checkEmail len failed")
 )
 
-type Data struct {
+type InputData struct {
 	FullName string `json:"fullName" validate:"min=2"`
-	Email    string `json:"email" validate:"max=256,email"` // regular
+	Email    string `json:"email" validate:"max=256,email"`
 	Password string `json:"password" validate:"min=8,max=256,ascii"`
 }
 
-type userID struct {
+type UserData struct {
 	ID       string `json:"id"`
 	Password string `json:"password"`
 }
 
-func (request *Data) Validate() error {
-	if !checkName.MatchString(request.FullName) {
-		return fmt.Errorf("checkName failed")
+func (r *InputData) Validate() error {
+	nameCheck := regexp.MustCompile(namePattern)
+	emailCheck := regexp.MustCompile(emailPattern)
+
+	if !nameCheck.MatchString(r.FullName) {
+		return fmt.Errorf("%w", errName)
 	}
 
-	err := validatePassword(request.Password)
+	err := validatePassword(r.Password)
 	if err != nil {
 		return fmt.Errorf("%w", err)
 	}
 
-	if !checkEmail.MatchString(request.Email) {
-		return fmt.Errorf("checkEmail failed")
+	if !emailCheck.MatchString(r.Email) {
+		return fmt.Errorf("%w", errEmail)
 	}
 
-	if len(request.Email) > maxLength {
-		return fmt.Errorf("checkEmail len failed")
+	if len(r.Email) > maxLength {
+		return fmt.Errorf("%w", errLength)
 	}
 
 	return nil
 }
 
 func validatePassword(password string) error {
-	if !checkPassword.MatchString(password) {
-		return fmt.Errorf("checkPassword failed")
+	passwordCheck := regexp.MustCompile(passwordPattern)
+
+	if !passwordCheck.MatchString(password) {
+		return fmt.Errorf("%w", errPassword)
 	}
 
 	return nil
 }
-
-//type Req struct {
-//	Data Data `json:"data" validate:"required,dive,required"`
-//}
-//
-//func (r *Req) Validate() error {
-//	validate := validator.New()
-//
-//	if err := validate.Struct(r); err != nil {
-//		return fmt.Errorf("%w: Validate failed", err)
-//	}
-//
-//	return nil
-//}
