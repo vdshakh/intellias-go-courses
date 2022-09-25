@@ -21,10 +21,10 @@ const (
 // )
 
 var (
-	errName     = errors.New("nameCheck failed")
-	errEmail    = errors.New("emailCheck failed")
-	errPassword = errors.New("passwordCheck failed")
-	errLength   = errors.New("checkEmail len failed")
+	errInvalidName     = errors.New("nameCheck failed")
+	errInvalidEmail    = errors.New("emailCheck failed")
+	errInvalidPassword = errors.New("passwordCheck failed")
+	errInvalidLength   = errors.New("checkEmail len failed")
 )
 
 type InputData struct {
@@ -43,7 +43,7 @@ func (r *InputData) Validate() error {
 	emailCheck := regexp.MustCompile(emailPattern)
 
 	if !nameCheck.MatchString(r.FullName) {
-		return fmt.Errorf("%w", errName)
+		return fmt.Errorf("%w", errInvalidName)
 	}
 
 	err := validatePassword(r.Password)
@@ -52,11 +52,11 @@ func (r *InputData) Validate() error {
 	}
 
 	if !emailCheck.MatchString(r.Email) {
-		return fmt.Errorf("%w", errEmail)
+		return fmt.Errorf("%w", errInvalidEmail)
 	}
 
 	if len(r.Email) > maxLength {
-		return fmt.Errorf("%w", errLength)
+		return fmt.Errorf("%w", errInvalidLength)
 	}
 
 	return nil
@@ -66,7 +66,7 @@ func validatePassword(password string) error {
 	passwordCheck := regexp.MustCompile(passwordPattern)
 
 	if !passwordCheck.MatchString(password) {
-		return fmt.Errorf("%w", errPassword)
+		return fmt.Errorf("%w", errInvalidPassword)
 	}
 
 	return nil

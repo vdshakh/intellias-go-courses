@@ -24,12 +24,18 @@ func main() {
 	}
 
 	conf := config.NewConfigFromEnv()
+	if err = conf.Validate(); err != nil {
+		fmt.Printf("load config is failed: %v ", err)
+		os.Exit(1)
+	}
 
 	conn, err := sql.Open(conf.DBDriver, conf.DBSource)
 	if err != nil {
 		fmt.Printf("db connection failed: %v ", err)
 		os.Exit(1)
 	}
+
+	defer conn.Close()
 
 	newQueries = db.New(conn)
 
@@ -83,7 +89,7 @@ func ReadData(w http.ResponseWriter, r *http.Request) (UserData, error) {
 
 	bodyBytes, err := ioutil.ReadAll(r.Body)
 	if err != nil {
-		WriteResponse(w, http.StatusInternalServerError, fmt.Sprintf("c: %v", err))
+		WriteResponse(w, http.StatusInternalServerError, fmt.Sprintf("ioutil.ReadAll failed: %v", err))
 
 		return user, fmt.Errorf("ioutil.ReadAll failed: %w", err)
 	}
