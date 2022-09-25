@@ -1,5 +1,6 @@
 # intellias-go-courses
 
+THEORY
 0. Onboarding.
 1. Software development: teams, roles, specialisations.
 2. Computer's architecture. OS.
@@ -12,3 +13,7 @@
 9. Panic. Interfaces & Errors.
 10. Dependencies, packages. Unit tests, mocks.
 11. Concurrency.
+
+PRACTICE
+1. Simple web-server using stdLib/Gorilla/echo
+2. Web server with registration function
